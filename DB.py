@@ -4,12 +4,6 @@ from sqlalchemy import select, update, delete, func
 from sqlalchemy.exc import SQLAlchemyError
 from typing import List, Optional, Tuple, Any
 
-from DB import (
-    FewShotStore,
-    PromptStore,
-    Base,
-)
-
 import logging
 
 logger = logging.getLogger("eduspace")

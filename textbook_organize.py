@@ -16,7 +16,7 @@ def extract_number(key):
     return 0
 
 # 원본 JSON 파일 경로
-file = r"C:\Users\USER\Desktop\projects\eng_crawling\2022_results.json"
+file = r"C:\Users\USER\Desktop\projects\eng_crawling\2022_error_log.json"
 if os.path.exists(file):
     data = load_json_file(file)
 else:

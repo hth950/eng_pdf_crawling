@@ -12,8 +12,8 @@ OCI_DB_HOST = os.getenv("OCI_DB_HOST")
 OCI_DB_USER = os.getenv("OCI_DB_USER")
 OCI_DB_PASSWORD = os.getenv("OCI_DB_PASSWORD")
 OCI_DB_PORT = os.getenv("OCI_DB_PORT")
-OCI_DB_NAME_TH = os.getenv("OCI_DB_NAME")
-db_url = f"mysql+aiomysql://{OCI_DB_USER}:{OCI_DB_PASSWORD}@{OCI_DB_HOST}:{OCI_DB_PORT}/{OCI_DB_NAME_TH}"
+OCI_DB_NAME = os.getenv("OCI_DB_NAME_TH")
+db_url = f"mysql+aiomysql://{OCI_DB_USER}:{OCI_DB_PASSWORD}@{OCI_DB_HOST}:{OCI_DB_PORT}/{OCI_DB_NAME}"
 
 # DBManager와 ORM 모델 import (실제 파일 경로에 맞게 조정)
 from DB import DatabaseManager, Tag, Textbook, TextbookPassage, TextbookPassageTagBind  # 미리 정의된 비동기 DatabaseManager 클래스
@@ -28,11 +28,14 @@ def normalize_text(text: str) -> str:
 # helper 함수들: get_or_create_* 함수들은 기존 데이터가 있으면 리턴, 없으면 생성합니다.
 # ----------------------------------------------------------------------------
 
-async def get_or_create_tag(db_manager, name: str, category: str, parent_id: Optional[int]) -> Tag:
+async def get_or_create_tag(db_manager, name: str, category: str, parent_id: Optional[int], desc: str) -> Tag:
     # 대단원(category가 "대단원")인 경우, parent_id가 있을 때
     if category == "대단원" and parent_id is not None:
         # 동일 parent_id와 category("대단원")를 가진 모든 태그를 조회
-        filters = {"category": category, "parent_id": parent_id}
+        if desc:
+            filters = {"category": category, "parent_id": parent_id, "desc": desc}
+        else:
+            filters = {"category": category, "parent_id": parent_id}
         existing_tags: List[Tag] = await db_manager.get_all(Tag, filters)
         normalized_input = normalize_text(name)
         for tag in existing_tags:
@@ -47,7 +50,10 @@ async def get_or_create_tag(db_manager, name: str, category: str, parent_id: Opt
             return tags[0]
 
     # 동일한 태그가 없는 경우, 새로 생성
-    tag_data = {"name": name, "category": category, "parent_id": parent_id, "desc": None}
+    if desc:
+        tag_data = {"name": name, "category": category, "parent_id": parent_id, "desc": desc}
+    else:
+        tag_data = {"name": name, "category": category, "parent_id": parent_id, "desc": None}
     tag = await db_manager.create_entry(Tag, tag_data)
     return tag
 
@@ -101,7 +107,7 @@ async def process_files(json_file_path: str, csv_file_path: str, db_url: str):
 
     # 2. CSV 파일 읽기 – 각 행을 dict로 읽어서 리스트에 저장
     csv_rows = []
-    with open(csv_file_path, encoding="utf-8-sig", newline="") as csvfile:
+    with open(csv_file_path, encoding="euc-kr", newline="") as csvfile:
         reader = csv.DictReader(csvfile)
         for row in reader:
             # 각 컬럼의 좌우 공백 제거
@@ -126,8 +132,8 @@ async def process_files(json_file_path: str, csv_file_path: str, db_url: str):
         grade_tag = await get_or_create_tag(db_manager, name=grade, category="학년", parent_id=None)
         # - 세부과목 태그 (있다면; category="세부과목", parent=학년 태그)
         subject_tag = None
-        if subject_detail:
-            subject_tag = await get_or_create_tag(db_manager, name=subject_detail, category="세부과목", parent_id=grade_tag.id)
+        # if subject_detail:
+        #     subject_tag = await get_or_create_tag(db_manager, name=subject_detail, category="세부과목", parent_id=grade_tag.id)
         # - 출판사 태그 (있다면; category="출판사")
         publisher_tag = None
         if pub_tag_name:
@@ -180,11 +186,12 @@ async def process_files(json_file_path: str, csv_file_path: str, db_url: str):
                     if row.get("path2") != pub_tag_name or row.get("path3"):
                         continue
                 elif region == "고":
-                    if row.get("path1") not in ["고2", "고3"]:
+                    if row.get("path1") not in ["고1", "고2", "고3"]:
                         continue
                     # 고등은 세부과목이 있으므로: path2는 subject_detail, path3는 pub_tag_name이어야 함
-                    if row.get("path2") != subject_detail or row.get("path3") != pub_tag_name:
-                        continue
+                    if row.get("path1") in ["고1","고2", "고3"]:
+                        if row.get("path2") != subject_detail or row.get("path3") != pub_tag_name:
+                            continue
                 else:
                     continue
 
@@ -207,7 +214,7 @@ async def process_files(json_file_path: str, csv_file_path: str, db_url: str):
 
             # 대단원 태그 삽입 – parent는 출판사 태그가 있으면 그 id, 없으면 학년 태그 id 사용
             parent_for_lesson = publisher_tag.id if publisher_tag else grade_tag.id
-            lesson_tag = await get_or_create_tag(db_manager, name=lesson_tag_name, category="대단원", parent_id=parent_for_lesson)
+            lesson_tag = await get_or_create_tag(db_manager, name=lesson_tag_name, category="대단원", parent_id=parent_for_lesson, desc=None)
             lesson_tag_map[lkey] = lesson_tag
 
         # ④ Textbook, TextbookPassage 삽입
@@ -224,7 +231,7 @@ async def process_files(json_file_path: str, csv_file_path: str, db_url: str):
             "name": textbook_name,
             "publisher": publisher,
             "author": author,
-            "revision_year": "15",
+            "revision_year": "22",
             "subject": "english",
             "level": level,
         }
@@ -258,7 +265,7 @@ async def process_files(json_file_path: str, csv_file_path: str, db_url: str):
 
 if __name__ == "__main__":
     # JSON_FILE = "/data/eduspace-ai-server/tests/test/eng_textbook_results_filtered_test.json"  # JSON 파일 경로 지정
-    JSON_FILE = "/data/eduspace-ai-server/tests/test/eng_textbook_results_filtered_fix.json"  # JSON 파일 경로 지정
-    CSV_FILE = "/data/eduspace-ai-server/tests/test/eng_textbook_pdf_paths.csv"    # CSV 파일 경로 지정
+    JSON_FILE = r"C:\Users\USER\Desktop\projects\eng_crawling\2022_results_organize.json"  # JSON 파일 경로 지정
+    CSV_FILE = r"C:\Users\USER\Desktop\projects\eng_crawling\eng_pdf_crawling\고1 22개정 영어 본문-2.csv"    # CSV 파일 경로 지정
 
     asyncio.run(process_files(JSON_FILE, CSV_FILE, db_url))
