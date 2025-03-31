@@ -15,6 +15,7 @@ from selenium.webdriver.support import expected_conditions as EC
 RESULTS_JSON_FILE = "2022_results.json"
 ERROR_LOG_JSON_FILE = "2022_error_log.json"
 
+
 def load_data(file_path):
     """지정한 JSON 파일이 있으면 불러오고, 없으면 빈 딕셔너리를 반환합니다."""
     if os.path.exists(file_path):
@@ -27,10 +28,12 @@ def load_data(file_path):
         data = {}
     return data
 
+
 def save_data(data, file_path):
     """딕셔너리 데이터를 지정한 JSON 파일로 저장합니다."""
     with open(file_path, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=4)
+
 
 def safe_quit(driver):
     """드라이버 종료 시 예외를 잡고, 종료 후 5초 대기하여 포트가 해제되도록 합니다."""
@@ -39,6 +42,7 @@ def safe_quit(driver):
     except Exception as e:
         print("safe_quit() 오류:", e)
     time.sleep(5)
+
 
 def init_driver():
     """새로운 ChromeDriver 인스턴스를 생성하고 WebDriverWait 객체를 반환합니다."""
@@ -50,11 +54,12 @@ def init_driver():
     wait = WebDriverWait(driver, 15)
     return driver, wait
 
+
 def process_sentence(sentence, driver, wait, data):
     """
-    주어진 문장을 검색어로 하여 Selenium을 통해 결과를 처리하고,  
+    주어진 문장을 검색어로 하여 Selenium을 통해 결과를 처리하고,
     추출된 정보를 data 딕셔너리에 누적 저장합니다.
-    
+
     결과 페이지에서 검색어와 p.desc_txt span 내부의 텍스트가 일치하는지 확인합니다.
     일치하지 않거나 연결 오류가 발생하면 최대 3회까지 드라이버를 안전하게 종료 후 재시작하여 재검색합니다.
     """
@@ -67,31 +72,42 @@ def process_sentence(sentence, driver, wait, data):
             driver.get(url)
             # 'popup_search' 영역 로딩 대기
             wait.until(EC.presence_of_element_located((By.CLASS_NAME, "popup_search")))
-            
+
             # 검색 입력란 로딩 대기 및 검색어 입력
-            search_input = wait.until(EC.presence_of_element_located((By.ID, "searchText")))
+            search_input = wait.until(
+                EC.presence_of_element_located((By.ID, "searchText"))
+            )
             search_input.clear()
             search_input.send_keys(sentence)
-            
+
             # 검색 버튼 클릭
-            search_button = wait.until(EC.element_to_be_clickable((
-                By.XPATH, "//div[contains(@class, 'popup_search')]//button[contains(@class, 'btn') and contains(@onclick, 'MainMgr.search')]"
-            )))
+            search_button = wait.until(
+                EC.element_to_be_clickable(
+                    (
+                        By.XPATH,
+                        "//div[contains(@class, 'popup_search')]//button[contains(@class, 'btn') and contains(@onclick, 'MainMgr.search')]",
+                    )
+                )
+            )
             search_button.click()
-            
+
             # 결과 페이지 로딩 대기
             time.sleep(3)
-            
+
             # 결과 페이지에서 p.desc_txt span 내부의 텍스트 확인
-            result_span = wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "p.desc_txt span")))
+            result_span = wait.until(
+                EC.presence_of_element_located((By.CSS_SELECTOR, "p.desc_txt span"))
+            )
             result_text = result_span.text.strip()
-            
+
             if result_text == sentence:
                 print(f"[성공] 검색어 '{sentence}'와 결과 텍스트 일치")
                 break  # 정상 처리 시 while 탈출
             else:
                 attempt += 1
-                print(f"[재시도 {attempt}/{max_attempts}] 결과 텍스트 '{result_text}' ≠ 검색어 '{sentence}'")
+                print(
+                    f"[재시도 {attempt}/{max_attempts}] 결과 텍스트 '{result_text}' ≠ 검색어 '{sentence}'"
+                )
                 safe_quit(driver)
                 driver, wait = init_driver()
         except Exception as e:
@@ -100,11 +116,12 @@ def process_sentence(sentence, driver, wait, data):
             print(f"[재시도 {attempt}/{max_attempts}] 예외 발생: {e}")
             safe_quit(driver)
             driver, wait = init_driver()
-    
+
     # 결과 페이지에서 테이블들 추출 후 정보 수집
     try:
         tables = driver.find_elements(
-            By.XPATH, "//div[contains(@class, 'hor_tb pop_tb')]//table[contains(@class, 'tb_mt_0')]"
+            By.XPATH,
+            "//div[contains(@class, 'hor_tb pop_tb')]//table[contains(@class, 'tb_mt_0')]",
         )
         if not tables:
             print(f"[검색결과 없음] 검색어: {sentence}")
@@ -115,16 +132,19 @@ def process_sentence(sentence, driver, wait, data):
                     By.XPATH, ".//tr[th[normalize-space(text())='지문출처']]/td"
                 )
                 source_text = source_td.text
-                match = re.search(r"교과서명,\s*레슨,\s*본문번호\s*:\s*([^\n\r]+)", source_text)
+                match = re.search(
+                    r"교과서명,\s*레슨,\s*본문번호\s*:\s*([^\n\r]+)", source_text
+                )
                 if match:
-                    extracted_info = match.group(1).strip().split(',')
+                    extracted_info = match.group(1).strip().split(",")
                     if len(extracted_info) >= 3:
                         key1 = extracted_info[0].strip()  # 학년, 출판사정보
                         key2 = extracted_info[1].strip()  # 단원명
                         key3 = extracted_info[2].strip()  # 본문번호
                         try:
                             english_td = table.find_element(
-                                By.XPATH, ".//tr[th[normalize-space(text())='영어 지문']]/td"
+                                By.XPATH,
+                                ".//tr[th[normalize-space(text())='영어 지문']]/td",
                             )
                             english_text = english_td.text
                             print(f"검색어: {sentence} → {key1} > {key2} > {key3}")
@@ -144,40 +164,49 @@ def process_sentence(sentence, driver, wait, data):
                 print("지문출처 추출 오류:", e)
     except Exception as e:
         print("테이블 검색 중 오류:", e)
-    
+
     return driver, wait
+
 
 def extract_sentences_from_pdf(pdf_path):
     """
-    PDF 파일에서 텍스트를 추출한 후,  
+    PDF 파일에서 텍스트를 추출한 후,
     한글 제거, 문장 분리 및 전처리를 수행하여 문장 리스트를 반환합니다.
-    
-    만약 문장에 ':'가 있다면, ':' 이후의 부분만 사용하며,  
+
+    만약 문장에 ':'가 있다면, ':' 이후의 부분만 사용하며,
     문장이 오직 영어 알파벳, 공백, '.', ',', '\'', '\"', ':' 만 포함하는 경우에만 반환합니다.
     """
     sentences = []
     allowed_pattern = re.compile(r'^[A-Za-z\s\.\,\':"]+$')
-    with open(pdf_path, 'rb') as pdf_file:
+    with open(pdf_path, "rb") as pdf_file:
         pdf_reader = PyPDF2.PdfReader(pdf_file)
         for i, page in enumerate(pdf_reader.pages):
             text = page.extract_text()
             if not text:
                 continue
-            text = text.replace('‘','\'').replace('’', '\'').replace('“', '\"').replace('”', '\"')
-            text = re.sub(r'[ㄱ-ㅎ가-힣]+', '', text)
-            page_sentences = re.split(r'[\.!?\n]+\s*', text)
+            text = (
+                text.replace("‘", "'")
+                .replace("’", "'")
+                .replace("“", '"')
+                .replace("”", '"')
+            )
+            text = re.sub(r"[ㄱ-ㅎ가-힣]+", "", text)
+            page_sentences = re.split(r"[\.!?\n]+\s*", text)
             processed_sentences = []
             for s in page_sentences:
                 s = s.strip()
-                if ':' in s:
-                    s = s.split(':', 1)[1].strip()
-                if not s or s.count(' ') <= 3:
+                if ":" in s:
+                    s = s.split(":", 1)[1].strip()
+                if not s or s.count(" ") <= 3:
                     continue
                 if allowed_pattern.fullmatch(s):
                     processed_sentences.append(s)
             sentences.extend(processed_sentences)
-            print(f"----------- {i+1} 페이지에서 추출된 문장 수: {len(processed_sentences)} -----------")
+            print(
+                f"----------- {i+1} 페이지에서 추출된 문장 수: {len(processed_sentences)} -----------"
+            )
     return sentences
+
 
 def merge_results(dict1, dict2):
     """
@@ -190,6 +219,7 @@ def merge_results(dict1, dict2):
         else:
             dict1[key] = value
     return dict1
+
 
 def process_pdf(pdf_path):
     """
@@ -207,7 +237,7 @@ def process_pdf(pdf_path):
             error_entry = {
                 "pdf_file": pdf_path,
                 "search_term": sentence,
-                "error": str(e)
+                "error": str(e),
             }
             error_log.append(error_entry)
             print(f"[오류 기록] {error_entry}")
@@ -216,6 +246,7 @@ def process_pdf(pdf_path):
     print(f"PDF 처리 종료: {pdf_path}")
     return {"data": data, "errors": error_log}
 
+
 def process_all_pdfs(folder_path):
     """
     주어진 폴더 및 하위 폴더 내의 모든 PDF 파일을 병렬로 처리합니다.
@@ -223,7 +254,7 @@ def process_all_pdfs(folder_path):
     """
     pdf_files = glob.glob(os.path.join(folder_path, "**/*.pdf"), recursive=True)
     print("처리할 PDF 파일 수:", len(pdf_files))
-    
+
     results = {}
     all_errors = []  # 모든 PDF의 오류 기록을 모음
     with Pool(processes=6) as pool:
@@ -233,17 +264,18 @@ def process_all_pdfs(folder_path):
             all_errors.extend(res["errors"])
     return {"data": results, "errors": all_errors}
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     # PDF 파일들이 들어있는 폴더 경로 (본인 환경에 맞게 수정)
-    PDF_FOLDER = r"C:\Users\USER\Desktop\projects\eng_crawling\2022_test"
-    
+    PDF_FOLDER = r"./2022_test"
+
     # 폴더 및 하위 폴더 내 모든 PDF 파일 병렬 처리
     final_result = process_all_pdfs(PDF_FOLDER)
-    
+
     # 최종 결과와 오류 기록을 JSON 파일에 저장
     save_data(final_result["data"], RESULTS_JSON_FILE)
     save_data(final_result["errors"], ERROR_LOG_JSON_FILE)
-    
+
     print("\n최종 결과 JSON 데이터:")
     print(json.dumps(final_result["data"], ensure_ascii=False, indent=4))
     print("\n오류 기록 JSON 데이터:")
