@@ -26,11 +26,12 @@ class DatabaseManager:
         self.engine = create_async_engine(
             db_url,
             echo=False,
-            pool_size=20,          # 기본 풀 크기
-            max_overflow=30,       # 초과 연결 허용 수
-            pool_timeout=60,       # 연결 대기 타임아웃
+            pool_size=20,  # 기본 풀 크기
+            max_overflow=30,  # 초과 연결 허용 수
+            pool_timeout=60,  # 연결 대기 타임아웃
             pool_recycle=1800,
-            pool_pre_ping=True)      # 연결 재사용 시간(초))
+            pool_pre_ping=True,
+        )  # 연결 재사용 시간(초))
         self.async_session = sessionmaker(
             bind=self.engine, class_=AsyncSession, expire_on_commit=False
         )
@@ -70,7 +71,7 @@ class DatabaseManager:
                 logger.error(f"데이터 추가 중 오류 발생: {str(e)}")
                 await session.rollback()
                 raise DatabaseError("데이터 추가 중 오류가 발생했습니다.")
-            
+
     async def execute(self, sql: str):
         async with self.async_session() as session:
             try:
@@ -80,7 +81,7 @@ class DatabaseManager:
             except Exception as e:
                 await session.rollback()
                 raise e
-            
+
     async def get_all(self, model, filters: Optional[dict] = None) -> List[Any]:
         """
         특정 조건에 맞는 모든 데이터를 조회합니다.
@@ -186,7 +187,7 @@ class DatabaseManager:
                 )
                 await session.rollback()
                 raise DatabaseError("데이터 삭제 중 오류가 발생했습니다.")
-            
+
     async def fetch_all(
         self,
         model,
@@ -211,24 +212,24 @@ class DatabaseManager:
         async with self.async_session() as session:
             try:
                 query = select(model)
-                
+
                 # 조인 처리
                 if joins:
                     for join_relation in joins:
                         query = query.join(join_relation)
-                
+
                 # 필터 처리
                 if filters:
                     query = query.filter_by(**filters)
                 if additional_filters:
                     for filter_condition in additional_filters:
                         query = query.filter(filter_condition)
-                
+
                 # 옵션 처리
                 if options:
                     for option in options:
                         query = query.options(option)
-                
+
                 result = await session.execute(query)
                 data = result.unique().scalars().all()
                 return data
@@ -237,7 +238,7 @@ class DatabaseManager:
                     f"{model.__tablename__} 테이블에서 데이터를 조회하는 중 오류가 발생했습니다: {e}"
                 )
                 raise
-            
+
     # async def fetch_all(
     #     self,
     #     model,
@@ -367,7 +368,14 @@ class DatabaseManager:
                 answers = [fs.assistants for fs in few_shots]
 
                 logger.info(f"프롬프트 '{prompt_name}' 데이터를 조회했습니다.")
-                return prompt.system, prompt.user, questions, answers, few_shots_num, prompt.response_format
+                return (
+                    prompt.system,
+                    prompt.user,
+                    questions,
+                    answers,
+                    few_shots_num,
+                    prompt.response_format,
+                )
             except Exception as e:
                 logger.error(f"프롬프트 데이터를 조회하는 중 오류가 발생했습니다: {e}")
                 raise
@@ -528,6 +536,7 @@ class DatabaseManager:
             logger.error(f"group_id 업데이트 중 오류 발생: {str(e)}")
             await session.rollback()
             raise DatabaseError("group_id 업데이트 중 오류가 발생했습니다.")
+
     async def create_entry(self, model, data: dict) -> Any:
         """
         주어진 데이터를 기반으로 ORM 모델 객체를 생성하고 데이터베이스에 삽입합니다.
@@ -545,22 +554,32 @@ class DatabaseManager:
                 entry = model(**data)
                 session.add(entry)
                 await session.commit()
-                logger.info(f"{model.__tablename__}에 데이터가 성공적으로 추가되었습니다: {data}")
+                logger.info(
+                    f"{model.__tablename__}에 데이터가 성공적으로 추가되었습니다: {data}"
+                )
                 return entry
             except SQLAlchemyError as e:
                 logger.error(f"{model.__tablename__}에 데이터 추가 중 오류 발생: {e}")
                 await session.rollback()
                 raise DatabaseError("데이터 추가 중 오류가 발생했습니다.")
-            
+
 
 from sqlalchemy import (
-    Column, Integer, String, Text, Boolean, DateTime, Enum, ForeignKey
+    Column,
+    Integer,
+    String,
+    Text,
+    Boolean,
+    DateTime,
+    Enum,
+    ForeignKey,
 )
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
 from datetime import datetime
 
 Base_oci = declarative_base()
+
 
 # 1) problem 테이블
 class Problem(Base_oci):
@@ -570,7 +589,17 @@ class Problem(Base_oci):
     group_id = Column(Integer, ForeignKey("problem_group.id"), nullable=True)
     number = Column(String(255), nullable=True)
     point = Column(Integer, nullable=True)
-    type = Column(Enum("multiple_choice", "short_answer", "essay", "ox", "etc", name="problem_type_enum"), nullable=True)
+    type = Column(
+        Enum(
+            "multiple_choice",
+            "short_answer",
+            "essay",
+            "ox",
+            "etc",
+            name="problem_type_enum",
+        ),
+        nullable=True,
+    )
     level = Column(Integer, nullable=True)
     question = Column(Text, nullable=True)
     refer = Column(Text, nullable=True)
@@ -581,11 +610,29 @@ class Problem(Base_oci):
     is_verified = Column(Boolean, nullable=True)
     memo = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.now, nullable=False)
-    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now, nullable=True)
+    updated_at = Column(
+        DateTime, default=datetime.now, onupdate=datetime.now, nullable=True
+    )
     grade = Column(Integer, nullable=True)
-    school_level = Column(Enum('elementary', 'middle', 'high', name="school_level_enum"), nullable=False)
-    subject = Column(Enum('math', 'science', 'korean', 'english', 'social', 'history', 'etc', name="subject_enum"), nullable=False)
-    source_type = Column(Enum('ai', 'extracted', 'manual', name="source_type_enum"), nullable=False)
+    school_level = Column(
+        Enum("elementary", "middle", "high", name="school_level_enum"), nullable=False
+    )
+    subject = Column(
+        Enum(
+            "math",
+            "science",
+            "korean",
+            "english",
+            "social",
+            "history",
+            "etc",
+            name="subject_enum",
+        ),
+        nullable=False,
+    )
+    source_type = Column(
+        Enum("ai", "extracted", "manual", name="source_type_enum"), nullable=False
+    )
     purpose = Column(Text, nullable=True)
     choice1 = Column(Text, nullable=True)
     choice2 = Column(Text, nullable=True)
@@ -599,7 +646,11 @@ class Problem(Base_oci):
     ai_answer = Column(Text, nullable=True)
     origin_img_url = Column(Text, nullable=True, comment="원본 문제 이미지 url")
     sourced_by = Column(String(100), nullable=True)
-    human_review = Column(Enum('GOOD', 'BAD', 'UNVERIFIED', name="human_review_enum"), nullable=False, default='UNVERIFIED')
+    human_review = Column(
+        Enum("GOOD", "BAD", "UNVERIFIED", name="human_review_enum"),
+        nullable=False,
+        default="UNVERIFIED",
+    )
 
     # 관계 설정
     problem_group = relationship("ProblemGroup", back_populates="problems")
@@ -613,7 +664,9 @@ class ProblemGroup(Base_oci):
 
     id = Column(Integer, primary_key=True, autoincrement=True, index=True)
     source_id = Column(Integer, ForeignKey("source_info.id"), nullable=True)
-    problem_passage_id = Column(Integer, ForeignKey("problem_passage.id"), nullable=True)
+    problem_passage_id = Column(
+        Integer, ForeignKey("problem_passage.id"), nullable=True
+    )
     instruction = Column(Text, nullable=True)
 
     # 관계
@@ -638,7 +691,7 @@ class ProblemPassage(Base_oci):
     textbook_passages = relationship(
         "TextbookPassage",
         secondary="textbook_problem_passage_bind",
-        back_populates="problem_passages"
+        back_populates="problem_passages",
     )
 
 
@@ -744,7 +797,7 @@ class School(Base_oci):
     id = Column(Integer, primary_key=True, autoincrement=True, index=True)
     kor_name = Column(String(255), nullable=True)
     eng_name = Column(String(255), nullable=True)
-    level = Column(Enum("elementary","middle","high"), nullable=True)
+    level = Column(Enum("elementary", "middle", "high"), nullable=True)
     city = Column(String(255), nullable=True)
     district = Column(String(255), nullable=True)
     address = Column(String(255), nullable=True)
@@ -760,14 +813,21 @@ class SourceInfo(Base_oci):
 
     id = Column(Integer, primary_key=True, autoincrement=True, index=True)
     name = Column(String(255), nullable=True)
-    type = Column(Enum("ai","extracted","manual"), nullable=True)
-    subject = Column(Enum("math","science","korean","english","social","history","etc"), nullable=True)
+    type = Column(Enum("ai", "extracted", "manual"), nullable=True)
+    subject = Column(
+        Enum("math", "science", "korean", "english", "social", "history", "etc"),
+        nullable=True,
+    )
     year = Column(Integer, nullable=True)
     grade = Column(Integer, nullable=True)
     semester = Column(Integer, nullable=True)
-    exam_type = Column(Enum("mid","final","quiz","trial","sat","etc"), nullable=True)
+    exam_type = Column(
+        Enum("mid", "final", "quiz", "trial", "sat", "etc"), nullable=True
+    )
     school_id = Column(Integer, ForeignKey("school.id"), nullable=True)
-    textbook_passage_id = Column(Integer, ForeignKey("textbook_passage.id"), nullable=True)
+    textbook_passage_id = Column(
+        Integer, ForeignKey("textbook_passage.id"), nullable=True
+    )
     created_at = Column(DateTime, default=datetime.now, nullable=False)
     updated_at = Column(DateTime, nullable=True)
 
@@ -809,8 +869,11 @@ class Textbook(Base_oci):
     publisher = Column(String(255), nullable=True)
     author = Column(String(255), nullable=True)
     revision_year = Column(String(255), nullable=True)
-    subject = Column(Enum("math","science","korean","english","social","history","etc"), nullable=True)
-    level = Column(Enum("elementary","middle","high"), nullable=True)
+    subject = Column(
+        Enum("math", "science", "korean", "english", "social", "history", "etc"),
+        nullable=True,
+    )
+    level = Column(Enum("elementary", "middle", "high"), nullable=True)
     grade = Column(String(50), nullable=True)
     # 관계
     textbook_passages = relationship("TextbookPassage", back_populates="textbook")
@@ -833,9 +896,7 @@ class TextbookPassage(Base_oci):
 
     # Tag와 M:N
     tags = relationship(
-        "Tag",
-        secondary="textbook_passage_tag_bind",
-        back_populates="textbook_passages"
+        "Tag", secondary="textbook_passage_tag_bind", back_populates="textbook_passages"
     )
     # problem_passage와 N:N
     problem_passages = relationship(
@@ -850,7 +911,9 @@ class TextbookPassageTagBind(Base_oci):
     __tablename__ = "textbook_passage_tag_bind"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    textbook_passage_id = Column(Integer, ForeignKey("textbook_passage.id"), nullable=True)
+    textbook_passage_id = Column(
+        Integer, ForeignKey("textbook_passage.id"), nullable=True
+    )
     tag_id = Column(Integer, ForeignKey("tag.id"), nullable=True)
 
 
@@ -859,14 +922,17 @@ class TextbookProblemPassageBind(Base_oci):
     __tablename__ = "textbook_problem_passage_bind"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    textbook_passage_id = Column(Integer, ForeignKey("textbook_passage.id"), nullable=True)
-    problem_passage_id = Column(Integer, ForeignKey("problem_passage.id"), nullable=True)
+    textbook_passage_id = Column(
+        Integer, ForeignKey("textbook_passage.id"), nullable=True
+    )
+    problem_passage_id = Column(
+        Integer, ForeignKey("problem_passage.id"), nullable=True
+    )
     similarity = Column(Integer, nullable=True)
 
 
-
 # --------------------------------------------------------------------------
-# ML/AI 용도 (few_shot_store, prompt_store)는 이미 추가했으므로 여기서는 제외하거나, 
+# ML/AI 용도 (few_shot_store, prompt_store)는 이미 추가했으므로 여기서는 제외하거나,
 # 필요 시 별도로 정리
 # --------------------------------------------------------------------------
 class MathProblemTagBind(Base_oci):
