@@ -18,6 +18,11 @@ def extract_number(key):
     return 0
 
 
+def remove_titles(text):
+    # 정규식을 이용해 《》로 감싸진 제목과 그 뒤의 개행문자를 제거
+    return re.sub(r"《[^》]+》\n", "", text)
+
+
 # 원본 JSON 파일 경로
 file = r"./2022_results.json"
 if os.path.exists(file):
@@ -73,7 +78,8 @@ for p_id, p_value in data.items():
             new_inner["content"] = {}
             if isinstance(content, dict):
                 for num_key in sorted(content, key=lambda x: int(x)):
-                    new_inner["content"][num_key] = content[num_key]
+                    text_content = content[num_key]
+                    new_inner["content"][num_key] = remove_titles(content[num_key])
             else:
                 new_inner["content"] = content
 
