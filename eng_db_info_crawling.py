@@ -244,7 +244,6 @@ async def process_eng_textbook_passage(passage: TextbookPassage):
     data = {}
     error_log = []  # 해당 PDF 파일 처리 중 발생한 오류 기록 (검색어와 에러 메시지)
     sentences = await extract_sentences_from_DB(passage)
-    sentences = sentences[:5]  # 문장 수 제한 (테스트 용도)
     driver, wait = init_driver()
     for sentence in sentences:
         try:
@@ -270,26 +269,27 @@ async def process_all_eng_textbook():
     """
     db_manager = DatabaseManager(db_url=db_url)
     await db_manager.connect()
-    english_textbook: List[Textbook] = await db_manager.get_all(
+    english_textbooks: List[Textbook] = await db_manager.get_all(
         Textbook, {"subject": "english"}
     )
-    print(f"DB에서 영어 교과서 정보 로드 완료: {english_textbook}")
+    print(f"DB에서 영어 교과서 정보 로드 완료: {len(english_textbooks)}")
     eng_textbook_passages: List[TextbookPassage] = []
-    for textbook in english_textbook:
+    for textbook in english_textbooks:
         eng_textbook_passages += await db_manager.get_all(
             TextbookPassage, {"textbook_id": textbook.id}
         )
-        break
     print("DB에서 영어 교과서 본문 정보 로드 완료")
+    for passage in eng_textbook_passages:
+        print(f"Passage ID: {passage.id}, 제목: {passage.article}")
     results = {}
     all_errors = []  # 모든 PDF의 오류 기록을 모음
     # tasks = [process_eng_textbook_passage(passage) for passage in eng_textbook_passages]
-    tasks = [process_eng_textbook_passage(eng_textbook_passages[0])]
-    pdf_results = await asyncio.gather(*tasks)
+    # # tasks = [process_eng_textbook_passage(eng_textbook_passages[0])]
+    # pdf_results = await asyncio.gather(*tasks)
 
-    for res in pdf_results:
-        merge_results(results, res["data"])
-        all_errors.extend(res["errors"])
+    # for res in pdf_results:
+    #     merge_results(results, res["data"])
+    #     all_errors.extend(res["errors"])
     await db_manager.disconnect()
 
     return {"data": results, "errors": all_errors}
