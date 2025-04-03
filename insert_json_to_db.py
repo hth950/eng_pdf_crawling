@@ -3,6 +3,7 @@ import json
 import os
 
 from dotenv import load_dotenv
+from sqlalchemy import text
 
 
 load_dotenv()
@@ -31,25 +32,49 @@ async def insert_json_to_db(json_data):
     # 예시로 print 문을 사용합니다.
     db_manager = DatabaseManager(db_url=db_url)
     await db_manager.connect()
-    for p_id, p_value in json_data.items():
-        # 상위 키별 순회
-        content = p_value.get("content")
-        if content:
-            if len(content) <= 1:
-                print("------------------------------------")
-                print(f"{p_id} is unavailable")
-            else:
-                sorted_keys = sorted(content.keys(), key=lambda x: int(x))
-                if sorted_keys[-1] != str(len(sorted_keys)):
+    async with db_manager.async_session() as session:
+        for p_id, p_value in json_data.items():
+            # 상위 키별 순회
+            if p_id == "2138":
+                continue
+            print("------------------------------------")
+            print(f"Processing {p_id}")
+            content = p_value.get("content")
+            if content:
+                if len(content) <= 1:
                     print("------------------------------------")
                     print(f"{p_id} is unavailable")
+                    continue
+                else:
+                    sorted_keys = sorted(content.keys(), key=lambda x: int(x))
+                    if sorted_keys[-1] != str(len(sorted_keys)):
+                        print("------------------------------------")
+                        print(f"{p_id} is unavailable")
+                        continue
 
-            # for key, value in content.items():
-            #     # 하위 키별 순회
-            #     print(f"Processing {p_id} - {key}: {value}")
+                for key, value in content.items():
+                    sql = text(
+                        """
+                        INSERT INTO textbook_passage (textbook_id, parent_id, passage, article, author, additional_info)
+                        SELECT 
+                            textbook_id AS textbook_id,
+                            :parent_id AS parent_id,
+                            :passage AS passage,
+                            CONCAT(article, '-', :article_key) AS article,
+                            author AS author,
+                            additional_info AS additional_info
+                        FROM textbook_passage
+                        WHERE id = :parent_id
+                        """
+                    )
+
+                    await session.execute(
+                        sql, {"parent_id": p_id, "passage": value, "article_key": key}
+                    )
+            await session.commit()
     await db_manager.disconnect()
 
-    # print(f"Inserting data into DB: {json_data}")
+    print(f"Inserting data completed")
 
 
 if __name__ == "__main__":
